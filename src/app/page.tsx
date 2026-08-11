@@ -2,15 +2,28 @@ import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { BrandMark } from "@/components/BrandMark";
 import { Button } from "@/components/ui/Button";
+import { SignOutButton } from "@/components/SignOutButton";
+import { redirect } from "next/navigation";
+import { createClient } from "@/utils/supabase/server";
 
-export default function HomePage() {
+export default async function HomePage() {
+  const supabase = await createClient();
+
+  //verify the current users token
+  const {
+    data: { user },
+    error,
+
+  } = await supabase.auth.getUser();
+
+  if (error || !user) {
+    redirect("/signin");
+  }
   return (
     <AppShell>
       <header className="mb-5 flex items-center justify-between animate-fade-up">
         <BrandMark href={null} />
-        <Button variant="ghost" size="sm">
-          Sign out
-        </Button>
+        <SignOutButton />
       </header>
 
       <header className="mb-6 flex items-center justify-between animate-fade-up">
