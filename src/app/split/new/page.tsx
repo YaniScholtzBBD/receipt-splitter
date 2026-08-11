@@ -1,10 +1,19 @@
-import Link from "next/link";
+"use client";
+
+import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { BackLink } from "@/components/BackLink";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/Button";
 
 export default function NewSplitPage() {
+  const router = useRouter();
+
+  function goToReview() {
+    const splitId = crypto.randomUUID();
+    router.push(`/split/${splitId}/review`);
+  }
+
   return (
     <AppShell>
       <nav className="mb-4 animate-fade-up" aria-label="Back">
@@ -31,20 +40,24 @@ export default function NewSplitPage() {
             accept="image/*"
             capture="environment"
             className="sr-only"
+            onChange={goToReview}
           />
         </label>
 
         <label className="inline-flex h-12 w-full cursor-pointer items-center justify-center rounded-2xl border border-border bg-surface px-5 text-base font-medium text-foreground transition-colors hover:bg-background">
           Choose from gallery
-          <input type="file" accept="image/*" className="sr-only" />
+          <input
+            type="file"
+            accept="image/*"
+            className="sr-only"
+            onChange={goToReview}
+          />
         </label>
 
         <footer className="mt-auto pt-8">
-          <Link href="/split/demo/participants" className="block">
-            <Button fullWidth size="lg">
-              Next
-            </Button>
-          </Link>
+          <Button fullWidth size="lg" disabled>
+            Next
+          </Button>
         </footer>
       </section>
     </AppShell>

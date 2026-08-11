@@ -75,6 +75,7 @@ export interface ReconciliationState {
 export interface PersonTotal {
   participant: Participant
   claimed_subtotal: number
+  claimed_items: string[]
   vat_share: number
   service_share: number
   tip_share: number

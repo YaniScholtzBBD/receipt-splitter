@@ -3,7 +3,7 @@
 import {
   useMemo,
   useState,
-  type FormEvent,
+  type SubmitEvent,
 } from "react";
 
 import { AppShell } from "@/components/AppShell";
@@ -49,7 +49,7 @@ export default function SignInPage() {
   );
 
   async function handleSubmit(
-    event: FormEvent<HTMLFormElement>,
+    event: SubmitEvent<HTMLFormElement>,
   ) {
     event.preventDefault();
 
