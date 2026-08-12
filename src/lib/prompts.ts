@@ -30,8 +30,6 @@ VAT IS ALREADY IN THE PRICES:
   "V.A.T. Included @ 14%", or a "Total Excl" line printed below the
   total, states how much of the bill was VAT. It is not an amount to
   add on.
-- Always return 0 for "vat". Anything else gets added on top of the
-  item prices downstream, charging the VAT twice.
 
 SUBTOTAL AND TOTAL:
 - "subtotal" is the sum of the item prices exactly as printed. Never
