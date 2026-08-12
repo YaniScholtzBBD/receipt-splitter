@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { AppShell } from "@/components/AppShell";
 import { BackLink } from "@/components/BackLink";
@@ -10,6 +9,8 @@ import { Chip } from "@/components/ui/Chip";
 import { Input } from "@/components/ui/Input";
 import { formatRand } from "@/lib/format";
 import type { Item, Split } from "@/lib/types";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/utils/supabase/client";
 
 type EditableItem = {
   id: string;
@@ -75,6 +76,14 @@ export function ReceiptReviewForm({
     return toMoneyString(split.bill_subtotal * (split.tip_percent / 100));
   });
 
+  const router = useRouter();
+
+  const [saving, setSaving] =
+    useState(false);
+
+  const [saveError, setSaveError] =
+    useState<string | null>(null);
+
   const itemsSubtotal = useMemo(
     () => items.reduce((sum, item) => sum + parseMoney(item.price), 0),
     [items],
@@ -114,6 +123,112 @@ export function ReceiptReviewForm({
   function handleTipAmountChange(value: string) {
     setTipAmount(value);
     setTipPercent(null);
+  }
+
+  async function saveAndContinue() {
+    const validItems = items
+      .map((item) => ({
+        id: item.id,
+        name: item.name.trim(),
+        price: parseMoney(item.price),
+      }))
+      .filter(
+        (item) =>
+          item.name.length > 0 &&
+          item.price >= 0,
+      );
+
+    if (validItems.length === 0) {
+      setSaveError(
+        "Add at least one receipt item.",
+      );
+      return;
+    }
+
+    setSaving(true);
+    setSaveError(null);
+
+    const supabase = createClient();
+
+    try {
+      const derivedTipPercent =
+        itemsSubtotal > 0
+          ? (tipValue / itemsSubtotal) * 100
+          : 0;
+
+      // Update the split totals
+      const { error: splitError } =
+        await supabase
+          .from("splits")
+          .update({
+            bill_subtotal: itemsSubtotal,
+            bill_vat: parseMoney(vat),
+            bill_service_charge:
+              parseMoney(serviceCharge),
+            bill_total:
+              itemsSubtotal +
+              parseMoney(vat) +
+              parseMoney(serviceCharge),
+            tip_percent:
+              tipPercent ??
+              Number(
+                derivedTipPercent.toFixed(
+                  2,
+                ),
+              ),
+          })
+          .eq("id", splitId);
+
+      if (splitError) {
+        throw splitError;
+      }
+
+      /*
+       * Replace the existing item rows with
+       * the reviewed list.
+       */
+      const { error: deleteError } =
+        await supabase
+          .from("items")
+          .delete()
+          .eq("split_id", splitId);
+
+      if (deleteError) {
+        throw deleteError;
+      }
+
+      const { error: insertError } =
+        await supabase
+          .from("items")
+          .insert(
+            validItems.map(
+              (item, position) => ({
+                split_id: splitId,
+                name: item.name,
+                price: item.price,
+                claimed_by: [],
+                position,
+              }),
+            ),
+          );
+
+      if (insertError) {
+        throw insertError;
+      }
+
+      router.push(
+        `/split/${splitId}/participants`,
+      );
+      router.refresh();
+    } catch (error) {
+      setSaveError(
+        error instanceof Error
+          ? error.message
+          : "The receipt could not be saved.",
+      );
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -270,26 +385,33 @@ export function ReceiptReviewForm({
       </section>
 
       <footer className="mt-auto">
-        <Link href={`/split/${splitId}/participants`} className="block">
-          <Button fullWidth size="lg" disabled={items.length === 0}>
-            Next
-          </Button>
-        </Link>
+        {saveError ? (
+          <p
+            role="alert"
+            className="mb-3 rounded-2xl bg-warning px-4 py-3 text-sm text-warning-text"
+          >
+            {saveError}
+          </p>
+        ) : null}
+
+        <Button
+          type="button"
+          fullWidth
+          size="lg"
+          disabled={
+            items.length === 0 || saving
+          }
+          onClick={saveAndContinue}
+        >
+          {saving
+            ? "Saving receipt..."
+            : "Next"}
+        </Button>
       </footer>
     </AppShell>
   );
 }
 
-/** Loads receipt data for a draft split id (empty until Supabase is wired). */
-export function ReceiptReviewPage({ splitId }: { splitId: string }) {
-  return (
-    <ReceiptReviewForm
-      splitId={splitId}
-      initialSplit={null}
-      initialItems={[]}
-    />
-  );
-}
 
 function TrashIcon() {
   return (

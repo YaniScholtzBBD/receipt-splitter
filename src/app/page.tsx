@@ -12,7 +12,6 @@ import type { Split } from "@/lib/types";
 import { createClient } from "@/utils/supabase/server";
 
 export default async function HomePage() {
-  const receiptSplits: Split[] = [];
   const supabase = await createClient();
   const {
     data: { user },
@@ -22,6 +21,23 @@ export default async function HomePage() {
   if (error || !user) {
     redirect("/signin");
   }
+
+  const {
+  data: receiptSplits,
+  error: splitsError,
+} = await supabase
+  .from("splits")
+  .select("*")
+  .eq("user_id", user.id)
+  .order("created_at", {
+    ascending: false,
+  });
+
+if (splitsError) {
+  throw new Error(
+    splitsError.message,
+  );
+}
 
   return (
     <AppShell>
@@ -55,9 +71,9 @@ export default async function HomePage() {
           Recent
         </h2>
 
-        {receiptSplits.length > 0 ? (
+        {(receiptSplits ?? []).length > 0 ? (
           <ul className="flex flex-col gap-2">
-            {receiptSplits.map((split) => (
+            {(receiptSplits as Split[]).map((split) => (
               <li key={split.id}>
                 <Link
                   href={
