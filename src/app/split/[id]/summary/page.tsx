@@ -4,6 +4,16 @@ import { BackLink } from "@/components/BackLink";
 import { Button } from "@/components/ui/Button";
 import { formatRand } from "@/lib/format";
 import type { PersonTotal, Split } from "@/lib/types";
+import { notFound } from "next/navigation";
+
+import {
+  getPersonTotals,
+} from "@/lib/split-logic";
+import type {
+  Item,
+  Participant,
+} from "@/lib/types";
+import { createClient } from "@/utils/supabase/server";
 
 type SummaryPageProps = {
   params: Promise<{ id: string }>;
@@ -110,10 +120,65 @@ export default async function SummaryPage({ params }: SummaryPageProps) {
   );
 }
 
-async function loadSplit(_id: string): Promise<Split | null> {
-  return null;
+async function loadSplit(
+  id: string,
+): Promise<Split | null> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from("splits")
+    .select("*")
+    .eq("id", id)
+    .single();
+
+  if (error || !data) {
+    return null;
+  }
+
+  return data as Split;
 }
 
-async function loadPersonTotals(_id: string): Promise<PersonTotal[]> {
-  return [];
+async function loadPersonTotals(
+  id: string,
+): Promise<PersonTotal[]> {
+  const supabase = await createClient();
+
+  const [
+    splitResult,
+    participantResult,
+    itemResult,
+  ] = await Promise.all([
+    supabase
+      .from("splits")
+      .select("*")
+      .eq("id", id)
+      .single(),
+
+    supabase
+      .from("participants")
+      .select("*")
+      .eq("split_id", id)
+      .order("created_at"),
+
+    supabase
+      .from("items")
+      .select("*")
+      .eq("split_id", id)
+      .order("position"),
+  ]);
+
+  if (
+    !splitResult.data ||
+    participantResult.error ||
+    itemResult.error
+  ) {
+    return [];
+  }
+
+  return getPersonTotals(
+    splitResult.data as Split,
+    (participantResult.data ??
+      []) as Participant[],
+    (itemResult.data ?? []) as Item[],
+  );
 }

@@ -14,6 +14,7 @@ import {
   splitRemainingEvenly,
 } from "@/lib/split-logic";
 import type { Item, Participant } from "@/lib/types";
+import { createClient } from "@/utils/supabase/client";
 
 type ClaimBoardProps = {
   splitId: string;
@@ -28,6 +29,8 @@ export function ClaimBoard({
   initialItems,
   participants,
 }: ClaimBoardProps) {
+  const [saveError, setSaveError] =
+    useState<string | null>(null);
   const [items, setItems] = useState(initialItems);
   const [activeItemId, setActiveItemId] = useState<string | null>(null);
   const [draftClaimants, setDraftClaimants] = useState<string[]>([]);
@@ -70,9 +73,33 @@ export function ClaimBoard({
     setDraftClaimants([]);
   }
 
-  function confirmSheet() {
+  async function confirmSheet() {
     if (!activeItemId) return;
-    setItems((prev) => setItemClaimants(prev, activeItemId, draftClaimants));
+
+    setSaveError(null);
+
+    const supabase = createClient();
+
+    const { error } = await supabase
+      .from("items")
+      .update({
+        claimed_by: draftClaimants,
+      })
+      .eq("id", activeItemId);
+
+    if (error) {
+      setSaveError(error.message);
+      return;
+    }
+
+    setItems((current) =>
+      setItemClaimants(
+        current,
+        activeItemId,
+        draftClaimants,
+      ),
+    );
+
     closeSheet();
   }
 
@@ -84,10 +111,55 @@ export function ClaimBoard({
     );
   }
 
-  function handleSplitRemaining() {
-    setItems((prev) => splitRemainingEvenly(prev, participants));
-  }
+  async function handleSplitRemaining() {
+    const updated = splitRemainingEvenly(
+      items,
+      participants,
+    );
 
+    const changedItems = updated.filter(
+      (updatedItem) => {
+        const original = items.find(
+          (item) =>
+            item.id === updatedItem.id,
+        );
+
+        return (
+          original &&
+          original.claimed_by.length === 0 &&
+          updatedItem.claimed_by.length > 0
+        );
+      },
+    );
+
+    setSaveError(null);
+
+    const supabase = createClient();
+
+    const results = await Promise.all(
+      changedItems.map((item) =>
+        supabase
+          .from("items")
+          .update({
+            claimed_by: item.claimed_by,
+          })
+          .eq("id", item.id),
+      ),
+    );
+
+    const failed = results.find(
+      (result) => result.error,
+    );
+
+    if (failed?.error) {
+      setSaveError(
+        failed.error.message,
+      );
+      return;
+    }
+
+    setItems(updated);
+  }
   const confirmLabel = useMemo(() => {
     if (!activeItem || draftClaimants.length === 0) return "Confirm";
     if (draftClaimants.length === 1) {
@@ -172,6 +244,14 @@ export function ClaimBoard({
           </article>
         )}
       </section>
+      {saveError ? (
+        <p
+          role="alert"
+          className="mb-4 rounded-2xl bg-warning px-4 py-3 text-sm text-warning-text"
+        >
+          {saveError}
+        </p>
+      ) : null}
 
       <footer className="mt-auto flex flex-col gap-2 pb-1">
         <Button

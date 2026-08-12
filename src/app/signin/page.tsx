@@ -87,7 +87,7 @@ export default function SignInPage() {
       if (!response.ok) {
         setError(
           result.error ??
-            "Authentication failed.",
+          "Authentication failed.",
         );
 
         return;
@@ -100,7 +100,7 @@ export default function SignInPage() {
       ) {
         setMessage(
           result.message ??
-            "Check your email to confirm your account.",
+          "Check your email to confirm your account.",
         );
 
         return;
@@ -192,7 +192,7 @@ export default function SignInPage() {
             name="email"
             type="email"
             autoComplete="email"
-            placeholder="you@email.com"
+            placeholder="Please enter email address"
             aria-label="Email address"
             value={email}
             onChange={(event) =>
@@ -210,7 +210,7 @@ export default function SignInPage() {
                 ? "new-password"
                 : "current-password"
             }
-            placeholder="••••••••"
+            placeholder="Please enter password"
             aria-label="Password"
             value={password}
             onChange={(event) =>
