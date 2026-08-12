@@ -25,6 +25,19 @@ CLEAN OBVIOUS OCR ARTIFACTS:
 - Fix clear misreads in item names (e.g. "Chibs" → "Chips").
 - Never correct prices — those must come from what's on the receipt.
 
+VAT IS ALREADY IN THE PRICES:
+- South African receipts build VAT into the item prices. A line like
+  "V.A.T. Included @ 14%", or a "Total Excl" line printed below the
+  total, states how much of the bill was VAT. It is not an amount to
+  add on.
+
+SUBTOTAL AND TOTAL:
+- "subtotal" is the sum of the item prices exactly as printed. Never
+  use a "Total Excl" or other pre-VAT line for this.
+- "total" is the printed total, ignoring any handwritten gratuity.
+- The two are equal on a receipt with no service charge, since the
+  prices already include the VAT.
+
 IGNORE THESE LINES WHEN BUILDING items ARRAY:
 - Subtotals, VAT lines, service charge lines, tips, gratuity, totals
 - Handwritten additions at the bottom
@@ -43,7 +56,7 @@ FORMAT (exact):
     { "name": "string", "price": number }
   ],
   "subtotal": number or null,
-  "vat": number or null,
+  "vat": 0,
   "service_charge": number or null,
   "total": number or null
 }`;
