@@ -70,7 +70,7 @@ export default function ParticipantsPage() {
   return (
     <AppShell>
       <nav className="mb-4 animate-fade-up" aria-label="Back">
-        <BackLink href="/split/new" />
+        <BackLink href={`/split/${splitId}/review`} label="Review receipt" />
       </nav>
 
       <PageHeader

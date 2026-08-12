@@ -1,24 +1,28 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { BrandMark } from "@/components/BrandMark";
 import { Button } from "@/components/ui/Button";
 import { SignOutButton } from "@/components/SignOutButton";
-import { redirect } from "next/navigation";
+import {
+  formatRand,
+  formatSplitDate,
+} from "@/lib/format";
+import type { Split } from "@/lib/types";
 import { createClient } from "@/utils/supabase/server";
 
 export default async function HomePage() {
+  const receiptSplits: Split[] = [];
   const supabase = await createClient();
-
-  //verify the current users token
   const {
     data: { user },
     error,
-
   } = await supabase.auth.getUser();
 
   if (error || !user) {
     redirect("/signin");
   }
+
   return (
     <AppShell>
       <header className="mb-5 flex items-center justify-between animate-fade-up">
@@ -51,9 +55,37 @@ export default async function HomePage() {
           Recent
         </h2>
 
-        <p className="rounded-2xl border border-dashed border-border bg-surface/60 px-5 py-12 text-center font-medium text-foreground">
-          No splits yet
-        </p>
+        {receiptSplits.length > 0 ? (
+          <ul className="flex flex-col gap-2">
+            {receiptSplits.map((split) => (
+              <li key={split.id}>
+                <Link
+                  href={
+                    split.finalised_at
+                      ? `/split/${split.id}/summary`
+                      : `/split/${split.id}/claim`
+                  }
+                  className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 rounded-2xl bg-surface px-5 py-4 shadow-sm ring-1 ring-border/70 transition-colors hover:bg-background"
+                >
+                  <p className="truncate font-medium text-foreground">
+                    {split.restaurant_name ?? "Untitled split"}
+                  </p>
+                  <p className="row-span-2 font-display text-base font-semibold text-foreground">
+                    {formatRand(split.bill_total)}
+                  </p>
+                  <p className="text-sm text-muted">
+                    {formatSplitDate(split.created_at)}
+                    {split.finalised_at ? " · Finalised" : " · In progress"}
+                  </p>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="rounded-2xl border border-dashed border-border bg-surface/60 px-5 py-12 text-center font-medium text-foreground">
+            No splits yet
+          </p>
+        )}
       </section>
     </AppShell>
   );
