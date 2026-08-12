@@ -1,4 +1,4 @@
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 
 import { ClaimBoard } from "@/components/ClaimBoard";
 import type {
@@ -20,6 +20,11 @@ export default async function ClaimPage({
   const { id } = await params;
 
   const supabase = await createClient();
+
+  // Figure out who's viewing this page
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
   const [
     splitResult,
@@ -64,22 +69,24 @@ export default async function ClaimPage({
     );
   }
 
-  const split =
-    splitResult.data as Split;
+  const split = splitResult.data as Split;
+
+  // If the split is already finalised, skip claim and go straight to summary
+  if (split.finalised_at) {
+    redirect(`/split/${id}/summary`);
+  }
+
+  // Payer = the user who created the split
+  // Guests have no user, or a different user id
+  const isPayer = Boolean(user && user.id === split.user_id);
 
   return (
     <ClaimBoard
       splitId={id}
-      billSubtotal={
-        split.bill_subtotal
-      }
-      initialItems={
-        (itemsResult.data ?? []) as Item[]
-      }
-      participants={
-        (participantsResult.data ??
-          []) as Participant[]
-      }
+      billSubtotal={split.bill_subtotal}
+      initialItems={(itemsResult.data ?? []) as Item[]}
+      participants={(participantsResult.data ?? []) as Participant[]}
+      isPayer={isPayer}
     />
   );
 }

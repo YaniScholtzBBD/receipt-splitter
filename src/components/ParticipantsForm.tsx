@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import type { Participant } from "@/lib/types";
 import { createClient } from "@/utils/supabase/client";
+import { ShareLinkButton } from "@/components/ShareLinkButton";
 
 const COLORS = [
   "#0F6B63",
@@ -47,17 +48,23 @@ export function ParticipantsForm({
   const [error, setError] =
     useState<string | null>(null);
 
-  async function handleAdd(
-    event: SubmitEvent<HTMLFormElement>,
-  ) {
+  async function handleAdd(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
-
     const trimmed = name.trim();
-
     if (!trimmed || loading) return;
 
     setLoading(true);
     setError(null);
+
+    const duplicate = people.some(
+      (p) => p.name.trim().toLowerCase() === trimmed.toLowerCase(),
+    );
+
+    if (duplicate) {
+      setLoading(false);
+      setError(`There's already a ${trimmed} in this split. Try a different name (e.g. "${trimmed} M").`);
+      return;
+    }
 
     const supabase = createClient();
 
@@ -154,6 +161,8 @@ export function ParticipantsForm({
         </p>
       ) : null}
 
+      
+      
       <form
         onSubmit={handleAdd}
         className="mb-6 flex gap-2 animate-fade-up-delay"
@@ -229,6 +238,12 @@ export function ParticipantsForm({
           </>
         ) : null}
       </section>
+
+      {people.length > 0 && (
+      <div className="mb-3 flex justify-center animate-fade-up-delay">
+          <ShareLinkButton splitId={splitId} label="Share link with group" />
+      </div>
+      )}
 
       <footer className="mt-auto">
         <Button

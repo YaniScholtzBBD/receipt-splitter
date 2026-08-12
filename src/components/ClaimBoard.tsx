@@ -15,22 +15,25 @@ import {
 } from "@/lib/split-logic";
 import type { Item, Participant } from "@/lib/types";
 import { createClient } from "@/utils/supabase/client";
+import { ShareLinkButton } from "@/components/ShareLinkButton";
 
 type ClaimBoardProps = {
   splitId: string;
   billSubtotal: number;
   initialItems: Item[];
   participants: Participant[];
+  isPayer: boolean;
 };
 
 export function ClaimBoard({
   splitId,
   billSubtotal,
   initialItems,
-  participants,
+  participants: initialParticipants,
+  isPayer,
 }: ClaimBoardProps) {
-  const [saveError, setSaveError] =
-    useState<string | null>(null);
+  const [participants, setParticipants] = useState(initialParticipants);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [items, setItems] = useState(initialItems);
   const [activeItemId, setActiveItemId] = useState<string | null>(null);
   const [draftClaimants, setDraftClaimants] = useState<string[]>([]);
@@ -62,6 +65,53 @@ export function ClaimBoard({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [activeItemId, draftClaimants]);
+
+   useEffect(() => {
+    const supabase = createClient();
+
+    const channel = supabase
+      .channel(`split-${splitId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "items",
+          filter: `split_id=eq.${splitId}`,
+        },
+        async () => {
+          const { data } = await supabase
+            .from("items")
+            .select("*")
+            .eq("split_id", splitId)
+            .order("position");
+          if (data) setItems(data as Item[]);
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "participants",
+          filter: `split_id=eq.${splitId}`,
+        },
+        async () => {
+          const { data } = await supabase
+            .from("participants")
+            .select("*")
+            .eq("split_id", splitId)
+            .order("created_at");
+          if (data) setParticipants(data as Participant[]);
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [splitId]);
+
 
   function openSheet(item: Item) {
     setActiveItemId(item.id);
@@ -175,8 +225,16 @@ export function ClaimBoard({
 
   return (
     <AppShell>
-      <nav className="mb-4 animate-fade-up" aria-label="Back">
-        <BackLink href={`/split/${splitId}/participants`} label="Participants" />
+      <nav
+        className="mb-4 flex items-center justify-between gap-2 animate-fade-up"
+        aria-label="Back"
+      >
+        {isPayer ? (
+          <BackLink href={`/split/${splitId}/participants`} label="Participants" />
+        ) : (
+          <span />
+        )}
+        {isPayer && <ShareLinkButton splitId={splitId} />}
       </nav>
 
       <aside
@@ -264,17 +322,23 @@ export function ClaimBoard({
         >
           Split remaining evenly
         </Button>
-        {isFullyClaimed ? (
-          <Link href={`/split/${splitId}/summary`} className="block">
-            <Button fullWidth size="lg">
+        {isPayer ? (
+          isFullyClaimed ? (
+            <Link href={`/split/${splitId}/summary`} className="block">
+              <Button fullWidth size="lg">
+                Finalise
+              </Button>
+            </Link>
+          ) : (
+            <Button fullWidth size="lg" disabled>
               Finalise
             </Button>
-          </Link>
+          )
         ) : (
-          <Button fullWidth size="lg" disabled>
-            Finalise
-          </Button>
-        )}
+          <p className="text-center text-sm text-muted">
+            Waiting for the payer to finalise…
+          </p>
+      )}
       </footer>
 
       {activeItem ? (
