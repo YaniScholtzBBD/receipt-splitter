@@ -87,6 +87,24 @@ export function ClaimBoard({
    useEffect(() => {
     const supabase = createClient();
 
+    async function loadItems() {
+      const { data } = await supabase
+        .from("items")
+        .select("*")
+        .eq("split_id", splitId)
+        .order("position");
+      if (data) setItems(data as Item[]);
+    }
+
+    async function loadParticipants() {
+      const { data } = await supabase
+        .from("participants")
+        .select("*")
+        .eq("split_id", splitId)
+        .order("created_at");
+      if (data) setParticipants(data as Participant[]);
+    }
+
     const channel = supabase
       .channel(`split-${splitId}`)
       .on(
@@ -97,13 +115,10 @@ export function ClaimBoard({
           table: "items",
           filter: `split_id=eq.${splitId}`,
         },
-        async () => {
-          const { data } = await supabase
-            .from("items")
-            .select("*")
-            .eq("split_id", splitId)
-            .order("position");
-          if (data) setItems(data as Item[]);
+        () => {
+          // A claim can come from someone who joined after this page loaded,
+          // so refresh the roster too or their name chip has nobody to match
+          void Promise.all([loadItems(), loadParticipants()]);
         },
       )
       .on(
@@ -114,13 +129,8 @@ export function ClaimBoard({
           table: "participants",
           filter: `split_id=eq.${splitId}`,
         },
-        async () => {
-          const { data } = await supabase
-            .from("participants")
-            .select("*")
-            .eq("split_id", splitId)
-            .order("created_at");
-          if (data) setParticipants(data as Participant[]);
+        () => {
+          void loadParticipants();
         },
       )
       .on(
