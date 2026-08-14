@@ -27,11 +27,13 @@ const COLORS = [
 
 type ParticipantsFormProps = {
   splitId: string;
+  restaurantName: string | null;
   initialParticipants: Participant[];
 };
 
 export function ParticipantsForm({
   splitId,
+  restaurantName,
   initialParticipants,
 }: ParticipantsFormProps) {
   const router = useRouter();
@@ -138,11 +140,17 @@ export function ParticipantsForm({
 
   return (
     <AppShell>
-      <nav
-        className="mb-4 animate-fade-up"
-        aria-label="Back"
-      >
-        {`/split/${splitId}/review`}
+      <nav className="mb-4 grid animate-fade-up" style={{ gridTemplateColumns: "2.25rem 1fr 2.25rem" }} aria-label="Back">
+        <BackLink
+          href={`/split/${splitId}/review`}
+          label={restaurantName ?? "Back to review"}
+        />
+        {restaurantName ? (
+          <span className="self-center truncate text-center text-base font-semibold text-foreground">
+            {restaurantName}
+          </span>
+        ) : <span />}
+        <span />
       </nav>
 
       <PageHeader

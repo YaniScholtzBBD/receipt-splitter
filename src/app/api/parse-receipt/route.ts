@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
 
+import { VAT_PERCENT } from "@/lib/format";
 import { RECEIPT_PARSING_PROMPT } from "@/lib/prompts";
 import type { ParsedReceipt } from "@/lib/types";
 import { createClient } from "@/utils/supabase/server";
@@ -146,14 +147,15 @@ export async function POST(request: NextRequest) {
     const subtotal =
       receipt.subtotal ?? calculatedSubtotal;
 
-    const vat = receipt.vat ?? 0;
+    const vatPercent = VAT_PERCENT;
+    const vat = subtotal * vatPercent / (100 + vatPercent);
 
     const serviceCharge =
       receipt.service_charge ?? 0;
 
     const total =
       receipt.total ??
-      subtotal + vat + serviceCharge;
+      subtotal + serviceCharge; 
 
     // Create the split
     const {

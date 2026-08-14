@@ -1,18 +1,14 @@
 "use client";
 
-import {
-  useMemo,
-  useState,
-  type SubmitEvent,
-} from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useState, type SubmitEvent } from "react";
 
 import { AppShell } from "@/components/AppShell";
 import { BrandMark } from "@/components/BrandMark";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { createClient } from "@/utils/supabase/client";
-
-type Mode = "signin" | "signup";
 
 type AuthResponse = {
   success?: boolean;
@@ -22,38 +18,26 @@ type AuthResponse = {
 };
 
 export default function SignInPage() {
-  const [mode, setMode] =
-    useState<Mode>("signin");
+  return (
+    <Suspense fallback={null}>
+      <SignInContent />
+    </Suspense>
+  );
+}
+
+function SignInContent() {
+  const searchParams = useSearchParams();
+  const isSignUp = searchParams.get("mode") === "signup";
 
   const [email, setEmail] = useState("");
-  const [password, setPassword] =
-    useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
 
-  const [loading, setLoading] =
-    useState(false);
-
-  const [error, setError] =
-    useState<string | null>(null);
-
-  const [message, setMessage] =
-    useState<string | null>(null);
-
-  const isSignUp = mode === "signup";
-
-  const canSubmit = useMemo(
-    () =>
-      email.trim().length > 0 &&
-      password.length >= 6 &&
-      !loading,
-    [email, password, loading],
-  );
-
-  async function handleSubmit(
-    event: SubmitEvent<HTMLFormElement>,
-  ) {
+  async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
     event.preventDefault();
-
-    if (!canSubmit) return;
+    if (loading) return;
 
     setLoading(true);
     setError(null);
@@ -64,7 +48,6 @@ export default function SignInPage() {
         ? "/api/auth/signup"
         : "/api/auth/login";
 
-      // Send credentials to our Next.js server
       const response = await fetch(endpoint, {
         method: "POST",
 
@@ -106,7 +89,6 @@ export default function SignInPage() {
         return;
       }
 
-      // Cookie now exists, load the homepage
       window.location.replace("/");
     } catch (error) {
       setError(
@@ -126,44 +108,36 @@ export default function SignInPage() {
 
     try {
       const supabase = createClient();
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: `${window.location.origin}/auth/callback` },
+      });
 
-      const { error } =
-        await supabase.auth.signInWithOAuth({
-          provider: "google",
-          options: {
-            redirectTo:
-              `${window.location.origin}/auth/callback`,
-          },
-        });
-
-      if (error) {
-        setError(error.message);
+      if (oauthError) {
+        setError(oauthError.message);
         setLoading(false);
       }
-    } catch (error) {
-      setError(
-        error instanceof Error
-          ? error.message
-          : "Google sign-in failed.",
-      );
-
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Google sign-in failed.");
       setLoading(false);
     }
-  }
-
-  function changeMode(nextMode: Mode) {
-    setMode(nextMode);
-    setError(null);
-    setMessage(null);
-    setPassword("");
   }
 
   return (
     <AppShell>
       <section className="flex flex-1 flex-col justify-center py-10 animate-fade-up">
-        {/* Restore the original logo */}
-        <header className="mb-8 flex w-full justify-center">
-          {null}
+        <header className="mb-8 flex w-full flex-col items-center gap-4 text-center">
+          <BrandMark href={null} layout="stacked" />
+          <div>
+            <h1 className="font-display text-2xl font-semibold text-foreground">
+              {isSignUp ? "Create your account" : "Welcome back"}
+            </h1>
+            <p className="mt-1 text-sm text-muted">
+              {isSignUp
+                ? "Sign up with email to start splitting bills."
+                : "Sign in to continue to Split."}
+            </p>
+          </div>
         </header>
 
         {error ? (
@@ -226,7 +200,7 @@ export default function SignInPage() {
             fullWidth
             size="lg"
             className="mt-2"
-            disabled={!canSubmit}
+            disabled={loading}
           >
             {loading ? (
               <>
@@ -255,32 +229,16 @@ export default function SignInPage() {
 
         <p className="mt-6 text-center text-sm text-muted">
           {isSignUp ? (
-            <>
-              Already have an account?{" "}
-              <button
-                type="button"
-                className="font-medium text-accent hover:underline disabled:opacity-50"
-                onClick={() =>
-                  changeMode("signin")
-                }
-                disabled={loading}
-              >
+            <>Already have an account?{" "}
+              <Link href="/signin" className="font-medium text-accent underline-offset-2 hover:underline">
                 Sign in
-              </button>
+              </Link>
             </>
           ) : (
-            <>
-              Don&apos;t have an account?{" "}
-              <button
-                type="button"
-                className="font-medium text-accent hover:underline disabled:opacity-50"
-                onClick={() =>
-                  changeMode("signup")
-                }
-                disabled={loading}
-              >
+            <>Don&apos;t have an account?{" "}
+              <Link href="/signin?mode=signup" className="font-medium text-accent underline-offset-2 hover:underline">
                 Sign up
-              </button>
+              </Link>
             </>
           )}
         </p>

@@ -1,7 +1,7 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { BackLink } from "@/components/BackLink";
 import { Button } from "@/components/ui/Button";
@@ -35,36 +35,54 @@ export function ClaimBoard({
   const [participants, setParticipants] = useState(initialParticipants);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [items, setItems] = useState(initialItems);
-  const [activeItemId, setActiveItemId] = useState<string | null>(null);
+  const [activeGroupIds, setActiveGroupIds] = useState<string[]>([]);
   const [draftClaimants, setDraftClaimants] = useState<string[]>([]);
+  const router = useRouter();
+
+  // Group consecutive items by name for display
+  const groups = useMemo(() => {
+    const map = new Map<string, Item[]>();
+    for (const item of items) {
+      const existing = map.get(item.name);
+      if (existing) existing.push(item);
+      else map.set(item.name, [item]);
+    }
+    return Array.from(map.values());
+  }, [items]);
+
+  const activeGroup = useMemo(
+    () => groups.find((g) => g.some((i) => activeGroupIds.includes(i.id))) ?? null,
+    [groups, activeGroupIds],
+  );
 
   const claimed = getClaimedSubtotal(items);
   const unclaimed = getUnclaimedSubtotal(items);
   const isFullyClaimed = unclaimed <= 0 && items.length > 0;
-  const activeItem = items.find((item) => item.id === activeItemId) ?? null;
 
   useEffect(() => {
-    if (!activeItemId) return;
-    const itemId = activeItemId;
+    if (activeGroupIds.length === 0) return;
+    const groupIds = activeGroupIds;
 
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         event.preventDefault();
-        setActiveItemId(null);
+        setActiveGroupIds([]);
         setDraftClaimants([]);
       }
       if (event.key === "Enter") {
         event.preventDefault();
         if (draftClaimants.length === 0) return;
-        setItems((prev) => setItemClaimants(prev, itemId, draftClaimants));
-        setActiveItemId(null);
+        setItems((prev) =>
+          groupIds.reduce((acc, id) => setItemClaimants(acc, id, draftClaimants), prev),
+        );
+        setActiveGroupIds([]);
         setDraftClaimants([]);
       }
     }
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [activeItemId, draftClaimants]);
+  }, [activeGroupIds, draftClaimants]);
 
    useEffect(() => {
     const supabase = createClient();
@@ -113,44 +131,52 @@ export function ClaimBoard({
   }, [splitId]);
 
 
-  function openSheet(item: Item) {
-    setActiveItemId(item.id);
-    setDraftClaimants([...item.claimed_by]);
+  function openSheet(group: Item[]) {
+    setActiveGroupIds(group.map((i) => i.id));
+    setDraftClaimants([...group[0].claimed_by]);
   }
 
   function closeSheet() {
-    setActiveItemId(null);
+    setActiveGroupIds([]);
     setDraftClaimants([]);
   }
 
   async function confirmSheet() {
-    if (!activeItemId) return;
+    if (activeGroupIds.length === 0) return;
 
     setSaveError(null);
 
     const supabase = createClient();
 
-    const { error } = await supabase
-      .from("items")
-      .update({
-        claimed_by: draftClaimants,
-      })
-      .eq("id", activeItemId);
+    const results = await Promise.all(
+      activeGroupIds.map((id) =>
+        supabase.from("items").update({ claimed_by: draftClaimants }).eq("id", id),
+      ),
+    );
 
-    if (error) {
-      setSaveError(error.message);
+    const failed = results.find((r) => r.error);
+    if (failed?.error) {
+      setSaveError(failed.error.message);
       return;
     }
 
     setItems((current) =>
-      setItemClaimants(
+      activeGroupIds.reduce(
+        (acc, id) => setItemClaimants(acc, id, draftClaimants),
         current,
-        activeItemId,
-        draftClaimants,
       ),
     );
 
     closeSheet();
+  }
+
+  async function handleFinalise() {
+    const supabase = createClient();
+    await supabase
+      .from("splits")
+      .update({ finalised_at: new Date().toISOString() })
+      .eq("id", splitId);
+    router.push(`/split/${splitId}/summary`);
   }
 
   function toggleDraftClaimant(participantId: string) {
@@ -211,13 +237,12 @@ export function ClaimBoard({
     setItems(updated);
   }
   const confirmLabel = useMemo(() => {
-    if (!activeItem || draftClaimants.length === 0) return "Confirm";
-    if (draftClaimants.length === 1) {
-      return `Confirm · ${formatRand(activeItem.price)}`;
-    }
-    const each = activeItem.price / draftClaimants.length;
+    if (!activeGroup || draftClaimants.length === 0) return "Confirm";
+    const totalPrice = activeGroup.reduce((sum, i) => sum + i.price, 0);
+    if (draftClaimants.length === 1) return `Confirm · ${formatRand(totalPrice)}`;
+    const each = totalPrice / draftClaimants.length;
     return `Confirm · ${formatRand(each)} each`;
-  }, [activeItem, draftClaimants.length]);
+  }, [activeGroup, draftClaimants.length]);
 
   const bannerClass = isFullyClaimed
     ? "bg-success text-success-text"
@@ -251,24 +276,29 @@ export function ClaimBoard({
         aria-label="Line items"
         className="mb-6 flex flex-1 flex-col gap-2 animate-fade-up-delay"
       >
-        {items.length > 0 ? (
-          items.map((item) => {
-            const claimants = participants.filter((person) =>
-              item.claimed_by.includes(person.id),
-            );
+        {groups.length > 0 ? (
+          groups.map((group) => {
+            const totalPrice = group.reduce((sum, i) => sum + i.price, 0);
+            const quantity = group.length;
+            // Claimants present on any item in the group
+            const claimantIds = [...new Set(group.flatMap((i) => i.claimed_by))];
+            const claimants = participants.filter((p) => claimantIds.includes(p.id));
 
             return (
               <button
-                key={item.id}
+                key={group[0].id}
                 type="button"
-                onClick={() => openSheet(item)}
+                onClick={() => openSheet(group)}
                 className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 rounded-2xl bg-surface px-5 py-4 text-left shadow-sm ring-1 ring-border/70 transition-colors hover:bg-background"
               >
                 <h2 className="truncate text-base font-medium text-foreground">
-                  {item.name}
+                  {group[0].name}
+                  {quantity > 1 && (
+                    <span className="ml-2 text-sm font-normal text-muted">×{quantity}</span>
+                  )}
                 </h2>
                 <p className="row-span-2 font-display text-base font-semibold text-foreground">
-                  {formatRand(item.price)}
+                  {formatRand(totalPrice)}
                 </p>
                 {claimants.length > 0 ? (
                   <ul className="flex flex-wrap items-center gap-1.5">
@@ -276,9 +306,7 @@ export function ClaimBoard({
                       <li key={person.id}>
                         <span
                           className="inline-flex items-center rounded-lg px-2 py-0.5 text-xs font-medium text-white"
-                          style={{
-                            backgroundColor: person.color ?? "var(--accent)",
-                          }}
+                          style={{ backgroundColor: person.color ?? "var(--accent)" }}
                         >
                           {person.name}
                         </span>
@@ -322,28 +350,23 @@ export function ClaimBoard({
         >
           Split remaining evenly
         </Button>
-        {isPayer ? (
-          isFullyClaimed ? (
-            <Link href={`/split/${splitId}/summary`} className="block">
-              <Button fullWidth size="lg">
-                Finalise
-              </Button>
-            </Link>
-          ) : (
-            <Button fullWidth size="lg" disabled>
-              Finalise
-            </Button>
-          )
+        {isFullyClaimed ? (
+          <Button fullWidth size="lg" onClick={handleFinalise}>
+            Finalise
+          </Button>
         ) : (
-          <p className="text-center text-sm text-muted">
-            Waiting for the payer to finalise…
-          </p>
-      )}
+          <Button fullWidth size="lg" disabled>
+            Finalise
+          </Button>
+        )}
       </footer>
 
-      {activeItem ? (
+      {activeGroup ? (
         <ClaimSheet
-          item={activeItem}
+          item={{
+            ...activeGroup[0],
+            price: activeGroup.reduce((sum, i) => sum + i.price, 0),
+          }}
           participants={participants}
           selectedIds={draftClaimants}
           confirmLabel={confirmLabel}
