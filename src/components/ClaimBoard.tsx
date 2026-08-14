@@ -132,7 +132,6 @@ export function ClaimBoard({
           filter: `id=eq.${splitId}`,
         },
         (payload) => {
-          // The payer finalised — send everyone else to the summary too
           const next = payload.new as { finalised_at: string | null };
           if (next.finalised_at) {
             router.replace(`/split/${splitId}/summary`);

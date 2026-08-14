@@ -17,7 +17,6 @@ export default async function ClaimPage({ params }: ClaimPageProps) {
 
   const supabase = await createClient();
 
-  // Figure out who's viewing this page
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -67,13 +66,10 @@ export default async function ClaimPage({ params }: ClaimPageProps) {
 
   const split = splitResult.data as Split;
 
-  // If the split is already finalised, skip claim and go straight to summary
   if (split.finalised_at) {
     redirect(`/split/${id}/summary`);
   }
 
-  // Payer = the user who created the split
-  // Guests have no user, or a different user id
   const isPayer = Boolean(user && user.id === split.user_id);
 
   return (

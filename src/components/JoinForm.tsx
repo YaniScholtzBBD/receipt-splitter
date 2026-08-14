@@ -10,12 +10,12 @@ import { Input } from "@/components/ui/Input";
 import { createClient } from "@/utils/supabase/client";
 
 const PALETTE = [
-  "#F96167", // coral
-  "#2F3C7E", // navy
-  "#3B6D11", // leaf
-  "#F9A826", // gold
-  "#0EA5A5", // teal
-  "#B14BB1", // magenta
+  "#F96167",
+  "#2F3C7E",
+  "#3B6D11",
+  "#F9A826",
+  "#0EA5A5",
+  "#B14BB1",
 ];
 
 type JoinFormProps = {
