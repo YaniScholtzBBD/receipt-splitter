@@ -7,7 +7,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { Chip } from "@/components/ui/Chip";
 import { Input } from "@/components/ui/Input";
-import { formatRand } from "@/lib/format";
+import { formatRand, VAT_PERCENT } from "@/lib/format";
 import type { Item, Split } from "@/lib/types";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/utils/supabase/client";
@@ -16,6 +16,8 @@ type EditableItem = {
   id: string;
   name: string;
   price: string;
+  unitPrice: number;
+  quantity: number;
 };
 
 const TIP_PERCENTAGES = [0, 10, 12.5, 15, 20] as const;
@@ -34,15 +36,34 @@ function createEmptyItem(): EditableItem {
     id: crypto.randomUUID(),
     name: "",
     price: "",
+    unitPrice: 0,
+    quantity: 1,
   };
 }
 
 function itemsFromSplit(items: Item[]): EditableItem[] {
-  return items.map((item) => ({
-    id: item.id,
-    name: item.name,
-    price: toMoneyString(item.price),
-  }));
+  // Group consecutive items by name to compute quantity + unit price
+  const groups = new Map<string, Item[]>();
+  for (const item of items) {
+    const existing = groups.get(item.name);
+    if (existing) {
+      existing.push(item);
+    } else {
+      groups.set(item.name, [item]);
+    }
+  }
+
+  return Array.from(groups.values()).map((group) => {
+    const unitPrice = group[0].price;
+    const quantity = group.length;
+    return {
+      id: group[0].id,
+      name: group[0].name,
+      unitPrice,
+      quantity,
+      price: toMoneyString(unitPrice * quantity),
+    };
+  });
 }
 
 type ReceiptReviewFormProps = {
@@ -57,13 +78,12 @@ export function ReceiptReviewForm({
   initialItems = [],
 }: ReceiptReviewFormProps) {
   const split = initialSplit;
+  const vatPercent = VAT_PERCENT;
+
   const [items, setItems] = useState<EditableItem[]>(() =>
     initialItems.length > 0
       ? itemsFromSplit(initialItems)
       : [createEmptyItem()],
-  );
-  const [vat, setVat] = useState(() =>
-    split ? toMoneyString(split.bill_vat) : "",
   );
   const [serviceCharge, setServiceCharge] = useState(() =>
     split ? toMoneyString(split.bill_service_charge) : "",
@@ -95,11 +115,11 @@ export function ReceiptReviewForm({
   }, [itemsSubtotal, tipPercent]);
 
   const tipValue = parseMoney(tipAmount);
+  const vatAmount = itemsSubtotal * vatPercent / (100 + vatPercent);
   const grandTotal =
     itemsSubtotal +
-    parseMoney(vat) +
     parseMoney(serviceCharge) +
-    tipValue;
+    tipValue; // VAT is inclusive in item prices — don't add it again
 
   function updateItem(id: string, patch: Partial<EditableItem>) {
     setItems((prev) =>
@@ -128,15 +148,11 @@ export function ReceiptReviewForm({
   async function saveAndContinue() {
     const validItems = items
       .map((item) => ({
-        id: item.id,
         name: item.name.trim(),
-        price: parseMoney(item.price),
+        unitPrice: item.unitPrice > 0 ? item.unitPrice : parseMoney(item.price) / item.quantity,
+        quantity: item.quantity,
       }))
-      .filter(
-        (item) =>
-          item.name.length > 0 &&
-          item.price >= 0,
-      );
+      .filter((item) => item.name.length > 0 && item.unitPrice >= 0);
 
     if (validItems.length === 0) {
       setSaveError(
@@ -162,19 +178,13 @@ export function ReceiptReviewForm({
           .from("splits")
           .update({
             bill_subtotal: itemsSubtotal,
-            bill_vat: parseMoney(vat),
-            bill_service_charge:
-              parseMoney(serviceCharge),
-            bill_total:
-              itemsSubtotal +
-              parseMoney(vat) +
-              parseMoney(serviceCharge),
+            bill_vat: itemsSubtotal * vatPercent / (100 + vatPercent),
+            bill_service_charge: parseMoney(serviceCharge),
+            bill_total: itemsSubtotal + parseMoney(serviceCharge),
             tip_percent:
               tipPercent ??
               Number(
-                derivedTipPercent.toFixed(
-                  2,
-                ),
+                derivedTipPercent.toFixed(2),
               ),
           })
           .eq("id", splitId);
@@ -201,14 +211,14 @@ export function ReceiptReviewForm({
         await supabase
           .from("items")
           .insert(
-            validItems.map(
-              (item, position) => ({
+            validItems.flatMap((item, groupIndex) =>
+              Array.from({ length: item.quantity }, (_, i) => ({
                 split_id: splitId,
                 name: item.name,
-                price: item.price,
+                price: item.unitPrice,
                 claimed_by: [],
-                position,
-              }),
+                position: groupIndex * 100 + i,
+              })),
             ),
           );
 
@@ -255,7 +265,24 @@ export function ReceiptReviewForm({
         <ul className="flex flex-col gap-2">
           {items.map((item) => (
             <li key={item.id}>
-              <article className="flex items-stretch gap-2 rounded-2xl bg-surface px-4 py-3 shadow-sm ring-1 ring-border/70">
+              <article className="flex items-center gap-3 rounded-2xl bg-surface px-4 py-3 shadow-sm ring-1 ring-border/70">
+                <div className="w-16 shrink-0">
+                  <Input
+                    value={item.quantity}
+                    onChange={(e) => {
+                      const newQty = Math.max(1, parseInt(e.target.value, 10) || 1);
+                      updateItem(item.id, {
+                        quantity: newQty,
+                        price: toMoneyString(item.unitPrice * newQty),
+                      });
+                    }}
+                    type="number"
+                    min={1}
+                    inputMode="numeric"
+                    aria-label="Quantity"
+                    className="px-2 text-center"
+                  />
+                </div>
                 <fieldset className="m-0 flex min-w-0 flex-1 flex-col gap-2 border-0 p-0">
                   <legend className="sr-only">
                     {item.name.trim() || "Untitled item"}
@@ -270,9 +297,13 @@ export function ReceiptReviewForm({
                   />
                   <Input
                     value={item.price}
-                    onChange={(e) =>
-                      updateItem(item.id, { price: e.target.value })
-                    }
+                    onChange={(e) => {
+                      const newPrice = e.target.value;
+                      updateItem(item.id, {
+                        price: newPrice,
+                        unitPrice: parseMoney(newPrice) / item.quantity,
+                      });
+                    }}
                     inputMode="decimal"
                     placeholder="0.00"
                     aria-label="Item price"
@@ -282,7 +313,7 @@ export function ReceiptReviewForm({
                   type="button"
                   aria-label={`Remove ${item.name || "item"}`}
                   onClick={() => removeItem(item.id)}
-                  className="inline-flex w-10 shrink-0 items-center justify-center self-stretch rounded-xl text-muted transition-colors hover:bg-background hover:text-foreground"
+                  className="inline-flex h-12 w-10 shrink-0 items-center justify-center rounded-xl text-muted transition-colors hover:bg-background hover:text-foreground"
                 >
                   <TrashIcon />
                 </button>
@@ -304,15 +335,6 @@ export function ReceiptReviewForm({
           Charges
         </h2>
 
-        <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium text-foreground">VAT</span>
-          <Input
-            value={vat}
-            onChange={(e) => setVat(e.target.value)}
-            inputMode="decimal"
-            placeholder="0.00"
-          />
-        </label>
 
         <label className="flex flex-col gap-1.5">
           <span className="text-sm font-medium text-foreground">
@@ -328,6 +350,10 @@ export function ReceiptReviewForm({
 
         <section aria-label="Tip" className="flex flex-col gap-2">
           <h3 className="text-sm font-medium text-foreground">Tip</h3>
+          <p className="text-sm text-muted">
+            Pick a % to calculate from items ({formatRand(itemsSubtotal)}), or
+            type an amount.
+          </p>
           <ul
             aria-label="Tip percentage"
             className="flex flex-wrap gap-2"
@@ -343,17 +369,22 @@ export function ReceiptReviewForm({
               </li>
             ))}
           </ul>
-          <p className="text-sm text-muted">
-            Pick a % to calculate from items ({formatRand(itemsSubtotal)}), or
-            type an amount.
-          </p>
-          <Input
-            value={tipAmount}
-            onChange={(e) => handleTipAmountChange(e.target.value)}
-            inputMode="decimal"
-            placeholder="0.00"
-            aria-label="Tip amount"
-          />
+          <div className="relative flex items-center">
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute left-4 select-none text-base text-muted"
+            >
+              R
+            </span>
+            <Input
+              value={tipAmount}
+              onChange={(e) => handleTipAmountChange(e.target.value)}
+              inputMode="decimal"
+              placeholder="0.00"
+              aria-label="Tip amount in rands"
+              className="pl-8"
+            />
+          </div>
         </section>
       </section>
 
@@ -363,9 +394,9 @@ export function ReceiptReviewForm({
           <dd className="font-medium text-foreground">
             {formatRand(itemsSubtotal)}
           </dd>
-          <dt className="text-muted">VAT</dt>
-          <dd className="font-medium text-foreground">
-            {formatRand(parseMoney(vat))}
+          <dt className="text-muted">VAT included ({vatPercent}%)</dt>
+          <dd className="text-foreground">
+            {formatRand(vatAmount)}
           </dd>
           <dt className="text-muted">Service charge</dt>
           <dd className="font-medium text-foreground">

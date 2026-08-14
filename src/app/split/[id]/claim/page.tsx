@@ -9,14 +9,10 @@ import type {
 import { createClient } from "@/utils/supabase/server";
 
 type ClaimPageProps = {
-  params: Promise<{
-    id: string;
-  }>;
+  params: Promise<{ id: string }>;
 };
 
-export default async function ClaimPage({
-  params,
-}: ClaimPageProps) {
+export default async function ClaimPage({ params }: ClaimPageProps) {
   const { id } = await params;
 
   const supabase = await createClient();

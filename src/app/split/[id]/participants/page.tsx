@@ -17,10 +17,9 @@ export default async function ParticipantsPage({
 
   const supabase = await createClient();
 
-  // Confirms that the split belongs to this user
   const { data: split } = await supabase
     .from("splits")
-    .select("id")
+    .select("id, restaurant_name")
     .eq("id", id)
     .single();
 
@@ -41,6 +40,7 @@ export default async function ParticipantsPage({
   return (
     <ParticipantsForm
       splitId={id}
+      restaurantName={split.restaurant_name}
       initialParticipants={
         (data ?? []) as Participant[]
       }

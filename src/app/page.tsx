@@ -50,13 +50,6 @@ if (splitsError) {
         <h1 className="font-display text-[1.75rem] font-semibold tracking-tight text-foreground sm:text-3xl">
           Your splits
         </h1>
-        <button
-          type="button"
-          aria-label="Refresh"
-          className="inline-flex h-9 w-9 items-center justify-center rounded-full text-muted transition-colors hover:bg-accent-soft hover:text-foreground"
-        >
-          <RefreshIcon />
-        </button>
       </header>
 
       <Link href="/split/new" className="mb-8 block animate-fade-up-delay">
