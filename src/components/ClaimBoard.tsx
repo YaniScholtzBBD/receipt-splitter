@@ -123,12 +123,28 @@ export function ClaimBoard({
           if (data) setParticipants(data as Participant[]);
         },
       )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "splits",
+          filter: `id=eq.${splitId}`,
+        },
+        (payload) => {
+          // The payer finalised — send everyone else to the summary too
+          const next = payload.new as { finalised_at: string | null };
+          if (next.finalised_at) {
+            router.replace(`/split/${splitId}/summary`);
+          }
+        },
+      )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [splitId]);
+  }, [splitId, router]);
 
 
   function openSheet(group: Item[]) {
@@ -350,14 +366,20 @@ export function ClaimBoard({
         >
           Split remaining evenly
         </Button>
-        {isFullyClaimed ? (
-          <Button fullWidth size="lg" onClick={handleFinalise}>
-            Finalise
-          </Button>
+        {isPayer ? (
+          isFullyClaimed ? (
+            <Button fullWidth size="lg" onClick={handleFinalise}>
+              Finalise
+            </Button>
+          ) : (
+            <Button fullWidth size="lg" disabled>
+              Finalise
+            </Button>
+          )
         ) : (
-          <Button fullWidth size="lg" disabled>
-            Finalise
-          </Button>
+          <p className="text-center text-sm text-muted">
+            Waiting for the payer to finalise…
+          </p>
         )}
       </footer>
 
