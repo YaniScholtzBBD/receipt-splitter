@@ -66,8 +66,12 @@ export async function updateSession(
 
   const path = request.nextUrl.pathname;
 
+  const isGuestAccessible =
+  /^\/split\/[^/]+\/(join|claim|summary)$/.test(path);
+
   const isProtectedPage =
-    path === "/" || path.startsWith("/split");
+    (path === "/" || path.startsWith("/split")) &&
+    !isGuestAccessible;
 
   const isSignInPage =
     path === "/signin";

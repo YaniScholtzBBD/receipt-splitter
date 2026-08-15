@@ -15,22 +15,25 @@ import {
 } from "@/lib/split-logic";
 import type { Item, Participant } from "@/lib/types";
 import { createClient } from "@/utils/supabase/client";
+import { ShareLinkButton } from "@/components/ShareLinkButton";
 
 type ClaimBoardProps = {
   splitId: string;
   billSubtotal: number;
   initialItems: Item[];
   participants: Participant[];
+  isPayer: boolean;
 };
 
 export function ClaimBoard({
   splitId,
   billSubtotal,
   initialItems,
-  participants,
+  participants: initialParticipants,
+  isPayer,
 }: ClaimBoardProps) {
-  const [saveError, setSaveError] =
-    useState<string | null>(null);
+  const [participants, setParticipants] = useState(initialParticipants);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [items, setItems] = useState(initialItems);
   const [activeGroupIds, setActiveGroupIds] = useState<string[]>([]);
   const [draftClaimants, setDraftClaimants] = useState<string[]>([]);
@@ -80,6 +83,78 @@ export function ClaimBoard({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [activeGroupIds, draftClaimants]);
+
+   useEffect(() => {
+    const supabase = createClient();
+
+    async function loadItems() {
+      const { data } = await supabase
+        .from("items")
+        .select("*")
+        .eq("split_id", splitId)
+        .order("position");
+      if (data) setItems(data as Item[]);
+    }
+
+    async function loadParticipants() {
+      const { data } = await supabase
+        .from("participants")
+        .select("*")
+        .eq("split_id", splitId)
+        .order("created_at");
+      if (data) setParticipants(data as Participant[]);
+    }
+
+    const channel = supabase
+      .channel(`split-${splitId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "items",
+          filter: `split_id=eq.${splitId}`,
+        },
+        () => {
+          // A claim can come from someone who joined after this page loaded,
+          // so refresh the roster too or their name chip has nobody to match
+          void Promise.all([loadItems(), loadParticipants()]);
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "participants",
+          filter: `split_id=eq.${splitId}`,
+        },
+        () => {
+          void loadParticipants();
+        },
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "splits",
+          filter: `id=eq.${splitId}`,
+        },
+        (payload) => {
+          const next = payload.new as { finalised_at: string | null };
+          if (next.finalised_at) {
+            router.replace(`/split/${splitId}/summary`);
+          }
+        },
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [splitId, router]);
+
 
   function openSheet(group: Item[]) {
     setActiveGroupIds(group.map((i) => i.id));
@@ -200,8 +275,16 @@ export function ClaimBoard({
 
   return (
     <AppShell>
-      <nav className="mb-4 animate-fade-up" aria-label="Back">
-        <BackLink href={`/split/${splitId}/participants`} label="Participants" />
+      <nav
+        className="mb-4 flex items-center justify-between gap-2 animate-fade-up"
+        aria-label="Back"
+      >
+        {isPayer ? (
+          <BackLink href={`/split/${splitId}/participants`} label="Participants" />
+        ) : (
+          <span />
+        )}
+        {isPayer && <ShareLinkButton splitId={splitId} />}
       </nav>
 
       <aside
@@ -292,14 +375,20 @@ export function ClaimBoard({
         >
           Split remaining evenly
         </Button>
-        {isFullyClaimed ? (
-          <Button fullWidth size="lg" onClick={handleFinalise}>
-            Finalise
-          </Button>
+        {isPayer ? (
+          isFullyClaimed ? (
+            <Button fullWidth size="lg" onClick={handleFinalise}>
+              Finalise
+            </Button>
+          ) : (
+            <Button fullWidth size="lg" disabled>
+              Finalise
+            </Button>
+          )
         ) : (
-          <Button fullWidth size="lg" disabled>
-            Finalise
-          </Button>
+          <p className="text-center text-sm text-muted">
+            Waiting for the payer to finalise…
+          </p>
         )}
       </footer>
 
