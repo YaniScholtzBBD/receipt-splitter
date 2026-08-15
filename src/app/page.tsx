@@ -72,7 +72,7 @@ if (splitsError) {
                   href={
                     split.finalised_at
                       ? `/split/${split.id}/summary`
-                      : `/split/${split.id}/claim`
+                      : `/split/${split.id}/review`
                   }
                   className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5 rounded-2xl bg-surface px-5 py-4 shadow-sm ring-1 ring-border/70 transition-colors hover:bg-background"
                 >

@@ -97,7 +97,7 @@ export default function NewSplitPage() {
         className="mb-4 animate-fade-up"
         aria-label="Back"
       >
-        /
+        <BackLink href="/" label="Back to home" />
       </nav>
 
       <PageHeader

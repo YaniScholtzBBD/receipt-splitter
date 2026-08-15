@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { BackLink } from "@/components/BackLink";
+import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { formatRand } from "@/lib/format";
 import {
@@ -19,6 +20,7 @@ import { ShareLinkButton } from "@/components/ShareLinkButton";
 
 type ClaimBoardProps = {
   splitId: string;
+  restaurantName: string | null;
   billSubtotal: number;
   initialItems: Item[];
   participants: Participant[];
@@ -27,6 +29,7 @@ type ClaimBoardProps = {
 
 export function ClaimBoard({
   splitId,
+  restaurantName,
   billSubtotal,
   initialItems,
   participants: initialParticipants,
@@ -35,54 +38,38 @@ export function ClaimBoard({
   const [participants, setParticipants] = useState(initialParticipants);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [items, setItems] = useState(initialItems);
-  const [activeGroupIds, setActiveGroupIds] = useState<string[]>([]);
+  const [activeItemId, setActiveItemId] = useState<string | null>(null);
   const [draftClaimants, setDraftClaimants] = useState<string[]>([]);
   const router = useRouter();
 
-  // Group consecutive items by name for display
-  const groups = useMemo(() => {
-    const map = new Map<string, Item[]>();
-    for (const item of items) {
-      const existing = map.get(item.name);
-      if (existing) existing.push(item);
-      else map.set(item.name, [item]);
-    }
-    return Array.from(map.values());
-  }, [items]);
-
-  const activeGroup = useMemo(
-    () => groups.find((g) => g.some((i) => activeGroupIds.includes(i.id))) ?? null,
-    [groups, activeGroupIds],
-  );
+  const activeItem = items.find((i) => i.id === activeItemId) ?? null;
 
   const claimed = getClaimedSubtotal(items);
   const unclaimed = getUnclaimedSubtotal(items);
   const isFullyClaimed = unclaimed <= 0 && items.length > 0;
 
   useEffect(() => {
-    if (activeGroupIds.length === 0) return;
-    const groupIds = activeGroupIds;
+    if (!activeItemId) return;
+    const itemId = activeItemId;
 
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         event.preventDefault();
-        setActiveGroupIds([]);
+        setActiveItemId(null);
         setDraftClaimants([]);
       }
       if (event.key === "Enter") {
         event.preventDefault();
         if (draftClaimants.length === 0) return;
-        setItems((prev) =>
-          groupIds.reduce((acc, id) => setItemClaimants(acc, id, draftClaimants), prev),
-        );
-        setActiveGroupIds([]);
+        setItems((prev) => setItemClaimants(prev, itemId, draftClaimants));
+        setActiveItemId(null);
         setDraftClaimants([]);
       }
     }
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [activeGroupIds, draftClaimants]);
+  }, [activeItemId, draftClaimants]);
 
    useEffect(() => {
     const supabase = createClient();
@@ -155,43 +142,34 @@ export function ClaimBoard({
     };
   }, [splitId, router]);
 
-
-  function openSheet(group: Item[]) {
-    setActiveGroupIds(group.map((i) => i.id));
-    setDraftClaimants([...group[0].claimed_by]);
+  function openSheet(item: Item) {
+    setActiveItemId(item.id);
+    setDraftClaimants([...item.claimed_by]);
   }
 
   function closeSheet() {
-    setActiveGroupIds([]);
+    setActiveItemId(null);
     setDraftClaimants([]);
   }
 
   async function confirmSheet() {
-    if (activeGroupIds.length === 0) return;
+    if (!activeItemId) return;
 
     setSaveError(null);
 
     const supabase = createClient();
 
-    const results = await Promise.all(
-      activeGroupIds.map((id) =>
-        supabase.from("items").update({ claimed_by: draftClaimants }).eq("id", id),
-      ),
-    );
+    const { error } = await supabase
+      .from("items")
+      .update({ claimed_by: draftClaimants })
+      .eq("id", activeItemId);
 
-    const failed = results.find((r) => r.error);
-    if (failed?.error) {
-      setSaveError(failed.error.message);
+    if (error) {
+      setSaveError(error.message);
       return;
     }
 
-    setItems((current) =>
-      activeGroupIds.reduce(
-        (acc, id) => setItemClaimants(acc, id, draftClaimants),
-        current,
-      ),
-    );
-
+    setItems((current) => setItemClaimants(current, activeItemId, draftClaimants));
     closeSheet();
   }
 
@@ -262,12 +240,11 @@ export function ClaimBoard({
     setItems(updated);
   }
   const confirmLabel = useMemo(() => {
-    if (!activeGroup || draftClaimants.length === 0) return "Confirm";
-    const totalPrice = activeGroup.reduce((sum, i) => sum + i.price, 0);
-    if (draftClaimants.length === 1) return `Confirm · ${formatRand(totalPrice)}`;
-    const each = totalPrice / draftClaimants.length;
+    if (!activeItem || draftClaimants.length === 0) return "Confirm";
+    if (draftClaimants.length === 1) return `Confirm · ${formatRand(activeItem.price)}`;
+    const each = activeItem.price / draftClaimants.length;
     return `Confirm · ${formatRand(each)} each`;
-  }, [activeGroup, draftClaimants.length]);
+  }, [activeItem, draftClaimants.length]);
 
   const bannerClass = isFullyClaimed
     ? "bg-success text-success-text"
@@ -276,7 +253,8 @@ export function ClaimBoard({
   return (
     <AppShell>
       <nav
-        className="mb-4 flex items-center justify-between gap-2 animate-fade-up"
+        className="mb-4 grid animate-fade-up"
+        style={{ gridTemplateColumns: "2.25rem 1fr 2.25rem" }}
         aria-label="Back"
       >
         {isPayer ? (
@@ -284,8 +262,22 @@ export function ClaimBoard({
         ) : (
           <span />
         )}
-        {isPayer && <ShareLinkButton splitId={splitId} />}
+        {restaurantName ? (
+          <span className="self-center truncate text-center text-base font-semibold text-foreground">
+            {restaurantName}
+          </span>
+        ) : (
+          <span />
+        )}
+        {isPayer ? <ShareLinkButton splitId={splitId} /> : <span />}
       </nav>
+
+      <PageHeader
+        align="center"
+        stepLabel="Step 3 of 3"
+        title="Who had what?"
+        description="Tap an item to claim it or split it."
+      />
 
       <aside
         aria-live="polite"
@@ -301,29 +293,23 @@ export function ClaimBoard({
         aria-label="Line items"
         className="mb-6 flex flex-1 flex-col gap-2 animate-fade-up-delay"
       >
-        {groups.length > 0 ? (
-          groups.map((group) => {
-            const totalPrice = group.reduce((sum, i) => sum + i.price, 0);
-            const quantity = group.length;
-            // Claimants present on any item in the group
-            const claimantIds = [...new Set(group.flatMap((i) => i.claimed_by))];
-            const claimants = participants.filter((p) => claimantIds.includes(p.id));
-
+        {items.length > 0 ? (
+          items.map((item) => {
+            const claimants = participants.filter((p) =>
+              item.claimed_by.includes(p.id),
+            );
             return (
               <button
-                key={group[0].id}
+                key={item.id}
                 type="button"
-                onClick={() => openSheet(group)}
+                onClick={() => openSheet(item)}
                 className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1.5 rounded-2xl bg-surface px-5 py-4 text-left shadow-sm ring-1 ring-border/70 transition-colors hover:bg-background"
               >
                 <h2 className="truncate text-base font-medium text-foreground">
-                  {group[0].name}
-                  {quantity > 1 && (
-                    <span className="ml-2 text-sm font-normal text-muted">×{quantity}</span>
-                  )}
+                  {item.name}
                 </h2>
                 <p className="row-span-2 font-display text-base font-semibold text-foreground">
-                  {formatRand(totalPrice)}
+                  {formatRand(item.price)}
                 </p>
                 {claimants.length > 0 ? (
                   <ul className="flex flex-wrap items-center gap-1.5">
@@ -392,12 +378,9 @@ export function ClaimBoard({
         )}
       </footer>
 
-      {activeGroup ? (
+      {activeItem ? (
         <ClaimSheet
-          item={{
-            ...activeGroup[0],
-            price: activeGroup.reduce((sum, i) => sum + i.price, 0),
-          }}
+          item={activeItem}
           participants={participants}
           selectedIds={draftClaimants}
           confirmLabel={confirmLabel}

@@ -79,6 +79,8 @@ export default async function ClaimPage({ params }: ClaimPageProps) {
       initialItems={(itemsResult.data ?? []) as Item[]}
       participants={(participantsResult.data ?? []) as Participant[]}
       isPayer={isPayer}
+      restaurantName={split.restaurant_name ?? "Restaurant"}
     />
+    
   );
 }
