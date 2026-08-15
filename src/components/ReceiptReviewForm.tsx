@@ -17,7 +17,7 @@ type EditableItem = {
   name: string;
   price: string;
   unitPrice: number;
-  quantity: number;
+  quantity: string;
 };
 
 const TIP_PERCENTAGES = [0, 10, 12.5, 15, 20] as const;
@@ -37,20 +37,16 @@ function createEmptyItem(): EditableItem {
     name: "",
     price: "",
     unitPrice: 0,
-    quantity: 1,
+    quantity: "1",
   };
 }
 
 function itemsFromSplit(items: Item[]): EditableItem[] {
-  // Group consecutive items by name to compute quantity + unit price
   const groups = new Map<string, Item[]>();
   for (const item of items) {
     const existing = groups.get(item.name);
-    if (existing) {
-      existing.push(item);
-    } else {
-      groups.set(item.name, [item]);
-    }
+    if (existing) existing.push(item);
+    else groups.set(item.name, [item]);
   }
 
   return Array.from(groups.values()).map((group) => {
@@ -60,7 +56,7 @@ function itemsFromSplit(items: Item[]): EditableItem[] {
       id: group[0].id,
       name: group[0].name,
       unitPrice,
-      quantity,
+      quantity: String(quantity),
       price: toMoneyString(unitPrice * quantity),
     };
   });
@@ -149,8 +145,8 @@ export function ReceiptReviewForm({
     const validItems = items
       .map((item) => ({
         name: item.name.trim(),
-        unitPrice: item.unitPrice > 0 ? item.unitPrice : parseMoney(item.price) / item.quantity,
-        quantity: item.quantity,
+        unitPrice: item.unitPrice > 0 ? item.unitPrice : parseMoney(item.price) / (parseInt(item.quantity, 10) || 1),
+        quantity: Math.max(1, parseInt(item.quantity, 10) || 1),
       }))
       .filter((item) => item.name.length > 0 && item.unitPrice >= 0);
 
@@ -251,7 +247,7 @@ export function ReceiptReviewForm({
         align="center"
         stepLabel="Step 1 of 3"
         title="Review the receipt"
-        description="Fix any misreads, then add tip, VAT, and service charge."
+        description="Fix any misreads, then add tip and service charge."
       />
 
       <section
@@ -270,10 +266,21 @@ export function ReceiptReviewForm({
                   <Input
                     value={item.quantity}
                     onChange={(e) => {
-                      const newQty = Math.max(1, parseInt(e.target.value, 10) || 1);
+                      const raw = e.target.value;
+                      const newQty = parseInt(raw, 10);
                       updateItem(item.id, {
-                        quantity: newQty,
-                        price: toMoneyString(item.unitPrice * newQty),
+                        quantity: raw,
+                        ...(newQty >= 1 && {
+                          price: toMoneyString(item.unitPrice * newQty),
+                        }),
+                      });
+                    }}
+                    onBlur={() => {
+                      const q = parseInt(item.quantity, 10);
+                      const clamped = isNaN(q) || q < 1 ? 1 : q;
+                      updateItem(item.id, {
+                        quantity: String(clamped),
+                        price: toMoneyString(item.unitPrice * clamped),
                       });
                     }}
                     type="number"
@@ -301,7 +308,7 @@ export function ReceiptReviewForm({
                       const newPrice = e.target.value;
                       updateItem(item.id, {
                         price: newPrice,
-                        unitPrice: parseMoney(newPrice) / item.quantity,
+                        unitPrice: parseMoney(newPrice) / (parseInt(item.quantity, 10) || 1),
                       });
                     }}
                     inputMode="decimal"

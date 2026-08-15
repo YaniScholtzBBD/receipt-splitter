@@ -77,28 +77,30 @@ export default async function SummaryPage({ params }: SummaryPageProps) {
           <ul className="flex flex-col gap-2">
             {personTotals.map(({ participant, total, claimed_items }) => (
               <li key={participant.id}>
-                <article className="flex items-center justify-between gap-3 rounded-2xl bg-surface px-5 py-4 shadow-sm ring-1 ring-border/70">
-                  <header className="flex min-w-0 items-center gap-3">
-                    <span
-                      aria-hidden
-                      className="h-3 w-3 shrink-0 rounded-full"
-                      style={{
-                        backgroundColor: participant.color ?? "var(--accent)",
-                      }}
-                    />
-                    <h3 className="min-w-0 truncate text-base font-medium text-foreground">
-                      {participant.name}
-                      <span className="mt-0 block truncate text-sm font-normal text-muted">
-                        {claimed_items.length > 0
-                          ? claimed_items.join(" + ")
-                          : "No items claimed"}
-                      </span>
-                    </h3>
-                  </header>
-                  <p className="shrink-0 font-display text-base font-semibold text-foreground">
-                    {formatRand(total)}
-                  </p>
-                </article>
+                <Link href={`/split/${id}/summary/${participant.id}`}>
+                  <article className="flex items-center justify-between gap-3 rounded-2xl bg-surface px-5 py-4 shadow-sm ring-1 ring-border/70 transition-colors hover:bg-background">
+                    <header className="flex min-w-0 items-center gap-3">
+                      <span
+                        aria-hidden
+                        className="h-3 w-3 shrink-0 rounded-full"
+                        style={{
+                          backgroundColor: participant.color ?? "var(--accent)",
+                        }}
+                      />
+                      <h3 className="min-w-0 truncate text-base font-medium text-foreground">
+                        {participant.name}
+                        <span className="mt-0 block truncate text-sm font-normal text-muted">
+                          {claimed_items.length > 0
+                            ? claimed_items.join(" + ")
+                            : "No items claimed"}
+                        </span>
+                      </h3>
+                    </header>
+                    <p className="shrink-0 font-display text-base font-semibold text-foreground">
+                      {formatRand(total)}
+                    </p>
+                  </article>
+                </Link>
               </li>
             ))}
           </ul>
