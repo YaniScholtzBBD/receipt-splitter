@@ -81,5 +81,6 @@ export default async function ClaimPage({ params }: ClaimPageProps) {
       isPayer={isPayer}
       restaurantName={split.restaurant_name ?? "Restaurant"}
     />
+    
   );
 }
