@@ -67,7 +67,7 @@ export async function updateSession(
   const path = request.nextUrl.pathname;
 
   const isGuestAccessible =
-  /^\/split\/[^/]+\/(join|claim|summary)$/.test(path);
+  /^\/split\/[^/]+\/(join|claim|summary(\/[^/]+)?)$/.test(path);
 
   const isProtectedPage =
     (path === "/" || path.startsWith("/split")) &&
